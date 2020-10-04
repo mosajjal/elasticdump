@@ -21,4 +21,3 @@ Download an entire Elastic cluster with one command.
 - Index pattern filter
 - TLS support
 - More parameter customization and optimization (Scroll size, thread count, artifact folder)
-- 
