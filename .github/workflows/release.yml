@@ -17,6 +17,5 @@ jobs:
     - uses: wangyoucao577/go-release-action@master
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        pre_command: go get .
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
