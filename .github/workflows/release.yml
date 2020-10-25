@@ -1,9 +1,6 @@
 name: Go Release Binary
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+on: release
+
 jobs:
   release-linux-386:
     name: release linux/386
