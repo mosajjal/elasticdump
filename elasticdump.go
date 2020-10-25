@@ -5,12 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"time"
-	postData := []byte(`{"size": 1000}`)
+
+	log "github.com/sirupsen/logrus"
+
 	"github.com/tidwall/gjson"
 )
 
@@ -18,6 +20,7 @@ var targetIP = flag.String("targetIP", "", "Target IP Address")
 var targetPort = flag.Uint("targetPort", 9200, "Target port")
 var minDocCount = flag.Uint("minDocCount", 100, "Minimum number of Documents for each index")
 var minIndexSizeKB = flag.Uint("minIndexSizeKB", 1024, "Minimum size of index for dump")
+var indexRegex = flag.String("indexRegex", ".*", "Only download indices matching regex")
 
 func checkFlags() {
 	flag.Parse()
@@ -80,7 +83,7 @@ func indexToJSON(ip string, port uint, index string, done chan<- bool) (okay boo
 	return true
 }
 
-func getIndexList(ip string, port uint, minDocCount uint, minIndexSizeKB uint) []string {
+func getIndexList(ip string, port uint, minDocCount uint, minIndexSizeKB uint, indexRe *regexp.Regexp) []string {
 
 	var resList []string
 
@@ -94,9 +97,15 @@ func getIndexList(ip string, port uint, minDocCount uint, minIndexSizeKB uint) [
 		docCountInt, _ := strconv.Atoi(gjson.Get(value.String(), "docs\\.count").String())
 		indexSizeKB, _ := strconv.Atoi(gjson.Get(value.String(), "store\\.size").String())
 		if uint(docCountInt) >= minDocCount && uint(indexSizeKB) >= minIndexSizeKB {
-
 			indexName := gjson.Get(value.String(), "index").String()
-			resList = append(resList, indexName)
+			// Checking index regex match
+			if indexRe.Match([]byte(indexName)) {
+				resList = append(resList, indexName)
+			} else {
+				log.Warnf("Index %s name did NOT match regex, skipping..", indexName)
+			}
+		} else {
+			log.Warnf("Index %s name did NOT meet document count and size requirements, skipping..", gjson.Get(value.String(), "index").String())
 		}
 		return true
 	})
@@ -104,18 +113,21 @@ func getIndexList(ip string, port uint, minDocCount uint, minIndexSizeKB uint) [
 }
 
 func main() {
-	log.Printf("Starting ...")
+	log.Info("Starting ...")
 	checkFlags()
-	indexList := getIndexList(*targetIP, *targetPort, *minDocCount, *minIndexSizeKB)
+	indexRe := regexp.MustCompile(*indexRegex)
+	log.Infof("Getting index list from %s", *targetIP)
+	indexList := getIndexList(*targetIP, *targetPort, *minDocCount, *minIndexSizeKB, indexRe)
 	done := make(chan bool)
 	for _, index := range indexList {
-		log.Printf("Getting index %s from %s", index, *targetIP)
+		log.Infof("Getting index %s from %s", index, *targetIP)
 		go indexToJSON(*targetIP, *targetPort, index, done)
 	}
 	// wait for everything to finish
 	errors := 0
 	for i := 0; i < len(indexList); i++ {
 		if !<-done {
+			log.Errorf("Error while doing index %s", indexList[i])
 			errors++
 		}
 	}
